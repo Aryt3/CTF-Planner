@@ -1,7 +1,6 @@
 package com.example.ctftime_planner
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
@@ -16,23 +15,31 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.BottomNavigation
 import androidx.compose.material.BottomNavigationItem
 import androidx.compose.material.DropdownMenu
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Scaffold
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.material.TopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +49,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -58,6 +66,9 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.TimeZone
@@ -270,8 +281,10 @@ fun Upcoming(sharedPref: SharedPreferences) {
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         fontSize = 14.sp,
-                        color = Color.Black
-                    )
+                        color = Color.Black,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "Weight: ${event.weight}",
@@ -338,24 +351,153 @@ fun Upcoming(sharedPref: SharedPreferences) {
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun Calendar() {
+    var currentYearMonth by remember { mutableStateOf(YearMonth.now()) }
 
     Column(
-        modifier=Modifier.fillMaxSize(),
-        verticalArrangement=Arrangement.Center,
-        horizontalAlignment=Alignment.CenterHorizontally
+        modifier = Modifier.fillMaxSize()
     ) {
-        Column(
-            modifier=Modifier.fillMaxSize(),
-            verticalArrangement=Arrangement.Center,
-            horizontalAlignment=Alignment.CenterHorizontally
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "Calendar")
+            IconButton(onClick = { currentYearMonth = currentYearMonth.minusMonths(1) }) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Previous Month")
+            }
+
+            Text(
+                text = "${currentYearMonth.month.name} ${currentYearMonth.year}",
+                style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold),
+                modifier = Modifier.padding(vertical = 16.dp, horizontal = 5.dp)
+            )
+
+            IconButton(onClick = { currentYearMonth = currentYearMonth.plusMonths(1) }) {
+                Icon(Icons.Default.ArrowForward, contentDescription = "Next Month")
+            }
+        }
+
+        val daysWithDates = generateDaysWithDates(currentYearMonth)
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 0.dp, top = 0.dp, end = 0.dp, bottom = 56.dp)
+        ) {
+            // Add table headers as the first row
+            item {
+                HeaderRow()
+            }
+            // Add each week's days
+            itemsIndexed(daysWithDates.chunked(7)) { index, week ->
+                WeekRow(week, selectedMonth = currentYearMonth)
+            }
         }
     }
 }
 
+@Composable
+fun HeaderRow() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { dayName ->
+            Text(
+                text = dayName,
+                color = Color(0xFF40E0D0),
+                style = TextStyle(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Center
+                ),
+                modifier = Modifier
+                    .padding(4.dp)
+                    .border(1.dp, Color(0xFF40E0D0), shape = RoundedCornerShape(4.dp))
+                    .weight(1f)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun WeekRow(week: List<Pair<String, LocalDate?>>, selectedMonth: YearMonth) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        for ((dayName, date) in week) {
+            val textColor = if (date != null && date.month == selectedMonth.month)
+                Color(0xFF40E0D0) // Color for days in the selected month
+            else
+                Color.LightGray // Default color for other days
+
+            Text(
+                text = if (date != null) "${date.dayOfMonth}" else "",
+                color = textColor,
+                style = TextStyle(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal
+                ),
+                modifier = Modifier
+                    .padding(4.dp)
+                    .border(1.dp, Color(0xFF40E0D0), shape = RoundedCornerShape(4.dp))
+                    .weight(1f)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+fun generateDaysWithDates(yearMonth: YearMonth): List<Pair<String, LocalDate?>> {
+    val daysWithDates = mutableListOf<Pair<String, LocalDate?>>()
+    val firstDayOfMonth = yearMonth.atDay(1)
+    val firstDayOfWeek = firstDayOfMonth.dayOfWeek.value
+    val startDay = if (firstDayOfWeek == DayOfWeek.MONDAY.value) 1 else 8 - firstDayOfWeek
+    val lastDayOfMonth = yearMonth.lengthOfMonth()
+    var currentDay = startDay
+
+    // Fill in the days from the previous month if the month does not start with Monday
+    if (startDay > 1) {
+        val prevMonth = yearMonth.minusMonths(1)
+        val daysInPrevMonth = prevMonth.lengthOfMonth()
+        val daysToFill = firstDayOfWeek - 1
+        for (i in 1..daysToFill) {
+            val prevDate = prevMonth.atDay(daysInPrevMonth - (daysToFill - i))
+            daysWithDates.add("" to prevDate)
+        }
+        // Reset currentDay to 1 after filling in the days from the previous month
+        currentDay = 1
+    }
+
+    // Fill in the days of the current month
+    while (currentDay <= lastDayOfMonth) {
+        val currentDate = yearMonth.atDay(currentDay)
+        daysWithDates.add("" to currentDate)
+        currentDay++
+    }
+
+    // Fill in the days from the next month to complete the last week
+    if (lastDayOfMonth + firstDayOfWeek.toInt() - 1 != 35) {
+        val remainingDays = 7 - (daysWithDates.size % 7)
+        val nextMonth = yearMonth.plusMonths(1)
+        val nextMonthFirstDay = nextMonth.atDay(1)
+        for (i in 1..remainingDays) {
+            val nextDate = nextMonthFirstDay.plusDays(i.toLong() - 1)
+            daysWithDates.add("" to nextDate)
+        }
+    }
+
+    return daysWithDates
+}
 
 fun getAllTimezones(): List<String> {
     return TimeZone.getAvailableIDs().toList()
