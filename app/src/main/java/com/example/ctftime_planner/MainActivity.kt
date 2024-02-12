@@ -5,18 +5,19 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import android.preference.PreferenceManager
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.BottomNavigation
 import androidx.compose.material.BottomNavigationItem
@@ -38,11 +40,14 @@ import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.material.TopAppBar
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -52,13 +57,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.ctftime_planner.ui.theme.CTFtime_PlannerTheme
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -139,6 +148,11 @@ fun Home(sharedPref: SharedPreferences) {
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun NavigationController(navController: NavHostController, sharedPref: SharedPreferences) {
+
+    val context = LocalContext.current
+    val db = AppDatabase.getDatabase(context)
+    val eventDao = db.eventDao()
+
     NavHost(navController = navController, startDestination = NavigationItem.Home.route) {
 
         composable(NavigationItem.Home.route) {
@@ -146,7 +160,7 @@ fun NavigationController(navController: NavHostController, sharedPref: SharedPre
         }
 
         composable(NavigationItem.NowRunning.route) {
-            NowRunning()
+            NowRunning(eventDao)
         }
 
         composable(NavigationItem.Upcoming.route) {
@@ -154,7 +168,7 @@ fun NavigationController(navController: NavHostController, sharedPref: SharedPre
         }
 
         composable(NavigationItem.Calendar.route) {
-            Calendar()
+            Calendar(eventDao)
         }
     }
 }
@@ -224,20 +238,15 @@ fun Navigation() {
 
 @SuppressLint("CoroutineCreationDuringComposition")
 @Composable
-fun NowRunning() {
+fun NowRunning(eventDao: EventDao) {
 
+    // Display UI
     Column(
-        modifier=Modifier.fillMaxSize(),
-        verticalArrangement=Arrangement.Center,
-        horizontalAlignment=Alignment.CenterHorizontally
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier=Modifier.fillMaxSize(),
-            verticalArrangement=Arrangement.Center,
-            horizontalAlignment=Alignment.CenterHorizontally
-        ) {
-            Text(text = "Now Running")
-        }
+        Text(text = "Now Running")
     }
 }
 
@@ -250,10 +259,46 @@ fun Upcoming(sharedPref: SharedPreferences) {
 
     val selectedTimeZone = sharedPref.getString("selectedTimeZone", "")
 
+    val context = LocalContext.current
+
+    val db = AppDatabase.getDatabase(context)
+    val eventDao = db.eventDao()
+
     // Fetch event data from API
     LaunchedEffect(Unit) {
         fetchEvents { fetchedEvents ->
             events = fetchedEvents
+        }
+    }
+
+    fun addEvent(event: EventItems) {
+        // Convert EventItems to EventEntity
+        val eventEntity = EventEntity(
+            title = event.title,
+            weight = event.weight.toFloat(),
+            start = event.start,
+            end = event.end,
+            eventId = event.id
+        )
+
+        // Launch a coroutine in the IO dispatcher to check if the event exists in the database
+        CoroutineScope(Dispatchers.IO).launch {
+            val existingEvent = eventDao.getEventById(event.id)
+            if (existingEvent == null) {
+                // If the event does not exist in the database, insert it
+                eventDao.insertEvent(eventEntity)
+            } else {
+                // If the event already exists, you can handle this situation accordingly,
+                // for example, by showing a message to the user or logging a warning.
+                Log.d("Event", "Event with ID ${event.id} already exists in the database.")
+            }
+        }
+    }
+
+    // Function to remove event item
+    fun removeEvent(eventId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            eventDao.deleteEventById(eventId)
         }
     }
 
@@ -346,6 +391,47 @@ fun Upcoming(sharedPref: SharedPreferences) {
                     ),
                     modifier = Modifier.padding(top = 150.dp)
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(
+                        onClick = {
+                            // Add event item
+                            addEvent(event)
+                        },
+                        modifier = Modifier
+                            .padding(top = 120.dp, end = 8.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.Green)
+                            .padding(1.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add",
+                            tint = Color.Green
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            // Remove event item
+                            removeEvent(event.id)
+                        },
+                        modifier = Modifier
+                            .padding(top = 120.dp, end = 8.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.Red)
+                            .padding(1.dp)
+
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "Remove",
+                            tint = Color.Red
+                        )
+                    }
+                }
             }
         }
     }
@@ -353,14 +439,18 @@ fun Upcoming(sharedPref: SharedPreferences) {
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun Calendar() {
+fun Calendar(eventDao: EventDao) { // Pass EventDao as a parameter
     var currentYearMonth by remember { mutableStateOf(YearMonth.now()) }
+    val selectedDate = remember { mutableStateOf<LocalDate?>(null) } // State variable for the selected date
+    var eventsForSelectedDate by remember { mutableStateOf<List<EventEntity>>(emptyList()) }
 
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(1f),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -379,22 +469,79 @@ fun Calendar() {
             }
         }
 
-        val daysWithDates = generateDaysWithDates(currentYearMonth)
+        // Use a Box to layer the LazyColumn and the second Text composable
+        Box(modifier = Modifier.weight(1f)) {
+            val daysWithDates = remember { mutableStateOf<List<Pair<String, LocalDate?>>?>(null) }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 0.dp, top = 0.dp, end = 0.dp, bottom = 56.dp)
-        ) {
-            // Add table headers as the first row
-            item {
-                HeaderRow()
+            // Fetch events from the database and generate days with dates
+            LaunchedEffect(currentYearMonth) {
+                val days = generateDaysWithDates(currentYearMonth, eventDao)
+                daysWithDates.value = days
             }
-            // Add each week's days
-            itemsIndexed(daysWithDates.chunked(7)) { index, week ->
-                WeekRow(week, selectedMonth = currentYearMonth)
+
+            daysWithDates.value?.let { days ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 0.dp, top = 0.dp, end = 0.dp, bottom = 56.dp)
+                ) {
+                    // Add table headers as the first row
+                    item {
+                        HeaderRow()
+                    }
+                    // Add each week's days
+                    itemsIndexed(days.chunked(7)) { index, week ->
+                        WeekRow(
+                            week,
+                            selectedMonth = currentYearMonth,
+                            onDayClick = { selectedDate.value = it } // Update the selected date
+                        )
+                    }
+                }
+            }
+
+            LaunchedEffect(selectedDate.value) {
+                selectedDate.value?.let { date ->
+                    val events = eventDao.getEventsForDate(date.toEpochDay())
+                    eventsForSelectedDate = events
+                }
+            }
+
+            // Show the selected date
+            selectedDate.value?.let { date ->
+                val dayOfWeek = currentYearMonth.atDay(1).dayOfWeek.value
+                val adjustedDayOfWeek = if (dayOfWeek == 7) 1 else dayOfWeek
+
+                Text(
+                    text = "Selected Date: ${date.toString()}",
+                    style = TextStyle(fontSize = 16.sp),
+                    modifier = Modifier.padding(
+                        top = if ((adjustedDayOfWeek > 5 && currentYearMonth.lengthOfMonth() == 31) || (adjustedDayOfWeek > 6 && currentYearMonth.lengthOfMonth() == 30)) 220.dp else 190.dp,
+                        start = 5.dp
+                    )
+                )
+
+                /*
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 5.dp, top = 240.dp, end = 0.dp, bottom = 56.dp)
+                ) {
+                    items(eventsForSelectedDate) { event ->
+                        // Display each event
+                        EventRow(event = event)
+                    }
+                }
+                */
             }
         }
     }
+}
+
+@Composable
+fun EventRow(event: EventEntity) {
+    // Define how each event should be displayed in a row
+    // For example:
+    Text(text = event.title)
+    // Add more UI elements to display other details of the event
 }
 
 @Composable
@@ -427,37 +574,48 @@ fun HeaderRow() {
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
-fun WeekRow(week: List<Pair<String, LocalDate?>>, selectedMonth: YearMonth) {
+fun WeekRow(
+    week: List<Pair<String, LocalDate?>>,
+    selectedMonth: YearMonth,
+    onDayClick: (LocalDate) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.SpaceEvenly
     ) {
         for ((dayName, date) in week) {
             val textColor = if (date != null && date.month == selectedMonth.month)
-                Color(0xFF40E0D0) // Color for days in the selected month
+                if (dayName == "red") Color.Red else Color(0xFF40E0D0)
             else
-                Color.LightGray // Default color for other days
+                Color.LightGray
 
-            Text(
-                text = if (date != null) "${date.dayOfMonth}" else "",
-                color = textColor,
-                style = TextStyle(
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal
-                ),
+            val dayOfMonth = date?.dayOfMonth ?: 0
+
+            Box(
                 modifier = Modifier
                     .padding(4.dp)
+                    .clickable {
+                        date?.let { onDayClick(it) }
+                    }
                     .border(1.dp, Color(0xFF40E0D0), shape = RoundedCornerShape(4.dp))
                     .weight(1f)
                     .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
+            ) {
+                Text(
+                    text = "$dayOfMonth",
+                    color = textColor,
+                    style = TextStyle(
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                )
+            }
         }
     }
 }
 
 @RequiresApi(Build.VERSION_CODES.O)
-fun generateDaysWithDates(yearMonth: YearMonth): List<Pair<String, LocalDate?>> {
+suspend fun generateDaysWithDates(yearMonth: YearMonth, eventDao: EventDao): List<Pair<String, LocalDate?>> {
     val daysWithDates = mutableListOf<Pair<String, LocalDate?>>()
     val firstDayOfMonth = yearMonth.atDay(1)
     val firstDayOfWeek = firstDayOfMonth.dayOfWeek.value
@@ -496,6 +654,24 @@ fun generateDaysWithDates(yearMonth: YearMonth): List<Pair<String, LocalDate?>> 
         }
     }
 
+    // Fetch events from the database
+    val events = eventDao.getAllEvents()
+
+    // Set background color based on event dates
+    for ((index, day) in daysWithDates.withIndex()) {
+        if (day.second != null) {
+            val eventDate = day.second
+            val isEventScheduled = events.any { event ->
+                val eventStartDate = LocalDate.parse(event.start.split("T")[0])
+                val eventEndDate = LocalDate.parse(event.end.split("T")[0])
+                eventStartDate <= eventDate && eventEndDate >= eventDate
+            }
+            if (isEventScheduled) {
+                daysWithDates[index] = "red" to day.second
+            }
+        }
+    }
+
     return daysWithDates
 }
 
@@ -527,7 +703,7 @@ fun parseEventsFromJson(json: String): List<EventItems> {
         val title = jsonObject.getString("title")
         val weight = jsonObject.getString("weight")
         val format = jsonObject.getString("format")
-        val id = jsonObject.getString("id")
+        val eventId = jsonObject.getString("id")
         val start = jsonObject.getString("start")
         val end = jsonObject.getString("finish")
 
@@ -543,7 +719,7 @@ fun parseEventsFromJson(json: String): List<EventItems> {
         val location = if (jsonObject.getString("onsite") == "true") "On-Site" else "Online"
 
         // return Items with properties
-        events.add(EventItems(title, weight, format, start, end, totalHours, location, id))
+        events.add(EventItems(title, weight, format, start, end, totalHours, location, eventId))
     }
     return events
 }

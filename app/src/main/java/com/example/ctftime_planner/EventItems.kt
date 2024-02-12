@@ -1,5 +1,15 @@
 package com.example.ctftime_planner
 
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Delete
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.RoomDatabase
+import kotlinx.coroutines.flow.Flow
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
@@ -14,12 +24,3 @@ data class EventItems(
     val location: String,
     val id: String
 )
-
-data class Event(
-    val title: String,
-    val date: LocalDate,
-    val startTime: LocalTime,
-    val endTime: LocalTime,
-    val location: String
-)
-
