@@ -44,8 +44,8 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE eventId = :id")
     suspend fun getEventById(id: String): EventEntity?
 
-    @Query("SELECT * FROM events WHERE start_date = :dateInMillis OR end_date >= :dateInMillis")
-    suspend fun getEventsForDate(dateInMillis: Long): List<EventEntity>
+    @Query("SELECT * FROM events WHERE start_date <= :endDate AND end_date >= :startDate")
+    suspend fun getEventsForDate(startDate: String, endDate: String): List<EventEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEvent(event: EventEntity)
