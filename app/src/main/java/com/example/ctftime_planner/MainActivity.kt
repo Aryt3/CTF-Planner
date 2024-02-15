@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -158,7 +159,7 @@ fun NavigationController(navController: NavHostController, sharedPref: SharedPre
         }
 
         composable(NavigationItem.NowRunning.route) {
-            NowRunning(eventDao)
+            NowRunning(sharedPref, eventDao)
         }
 
         composable(NavigationItem.Upcoming.route) {
@@ -234,21 +235,10 @@ fun Navigation() {
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @SuppressLint("CoroutineCreationDuringComposition")
 @Composable
-fun NowRunning(eventDao: EventDao) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(text = "Now Running")
-    }
-}
-
-@RequiresApi(Build.VERSION_CODES.O)
-@Composable
-fun Upcoming(sharedPref: SharedPreferences) {
+fun NowRunning(sharedPref: SharedPreferences, eventDao: EventDao) {
 
     var events by remember { mutableStateOf<List<EventItems>>(emptyList()) }
 
@@ -259,9 +249,8 @@ fun Upcoming(sharedPref: SharedPreferences) {
     val db = AppDatabase.getDatabase(context)
     val eventDao = db.eventDao()
 
-    // Fetch event data from API
     LaunchedEffect(Unit) {
-        fetchEvents { fetchedEvents ->
+        fetchEvents(url = URL("https://aryt3.dev/api/running_events")) { fetchedEvents ->
             events = fetchedEvents
         }
     }
@@ -414,8 +403,199 @@ fun Upcoming(sharedPref: SharedPreferences) {
                         modifier = Modifier
                             .padding(top = 120.dp, end = 8.dp)
                             .clip(CircleShape)
+                            .animateContentSize()
                             .border(1.dp, Color.Red)
                             .padding(1.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "Remove",
+                            tint = Color.Red
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+@Composable
+fun Upcoming(sharedPref: SharedPreferences) {
+
+    var events by remember { mutableStateOf<List<EventItems>>(emptyList()) }
+
+    val selectedTimeZone = sharedPref.getString("selectedTimeZone", "")
+
+    val context = LocalContext.current
+
+    val db = AppDatabase.getDatabase(context)
+    val eventDao = db.eventDao()
+
+    var backgroundColorAdd by remember { mutableStateOf(Color.LightGray) }
+    var backgroundColorRemove by remember { mutableStateOf(Color.LightGray) }
+
+    // Fetch event data from API
+    LaunchedEffect(Unit) {
+        fetchEvents(url = URL("https://ctftime.org/api/v1/events/?limit=100")) { fetchedEvents ->
+            events = fetchedEvents
+        }
+    }
+
+    fun addEvent(event: EventItems) {
+        val eventEntity = EventEntity(
+            title = event.title,
+            weight = event.weight.toFloat(),
+            start = event.start,
+            end = event.end,
+            eventId = event.id
+        )
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val existingEvent = eventDao.getEventById(event.id)
+            if (existingEvent == null) {
+                // If event does not exist in the db, insert it
+                eventDao.insertEvent(eventEntity)
+            }
+        }
+    }
+
+    fun removeEvent(eventId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            eventDao.deleteEventById(eventId)
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 0.dp, top = 0.dp, end = 0.dp, bottom = 56.dp)
+    ) {
+        items(events) { event ->
+
+            val startTime = selectedTimeZone?.let { convertDateTimeToTimeZone(event.start, it) }
+            val endTime = selectedTimeZone?.let { convertDateTimeToTimeZone(event.end, it) }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(color = Color.White)
+                    .border(border = BorderStroke(1.dp, Color.Black))
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = event.title,
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        fontSize = 14.sp,
+                        color = Color.Black,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = "Weight: ${event.weight}",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    ),
+                    modifier = Modifier.padding(top = 30.dp)
+                )
+
+                Text(
+                    text = "Format: ${event.format}",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    ),
+                    modifier = Modifier.padding(top = 50.dp)
+                )
+
+                Text(
+                    text = "Start: $startTime",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    ),
+                    modifier = Modifier.padding(top = 80.dp)
+                )
+
+                Text(
+                    text = "End: $endTime",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    ),
+                    modifier = Modifier.padding(top = 100.dp)
+                )
+
+                Text(
+                    text = "Duration: ${event.duration} hours",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    ),
+                    modifier = Modifier.padding(top = 120.dp)
+                )
+
+                Text(
+                    text = "Location: ${event.location}",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    ),
+                    modifier = Modifier.padding(top = 150.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    IconButton(
+                        onClick = {
+                            // Add event item
+                            backgroundColorAdd = Color.White
+                            addEvent(event)
+                        },
+                        modifier = Modifier
+                            .padding(top = 120.dp, end = 8.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.Green)
+                            .padding(1.dp)
+                            .background(backgroundColorAdd)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add",
+                            tint = Color.Green
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            // Remove event item
+                            backgroundColorRemove = Color.White
+                            removeEvent(event.id)
+                        },
+                        modifier = Modifier
+                            .padding(top = 120.dp, end = 8.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.Red)
+                            .padding(1.dp)
+                            .background(backgroundColorRemove)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Clear,
@@ -798,9 +978,8 @@ fun parseEventsFromJson(json: String): List<EventItems> {
 }
 
 // Function to fetch events from the API
-suspend fun fetchEvents(onEventsFetched: (List<EventItems>) -> Unit) {
+suspend fun fetchEvents(url: URL, onEventsFetched: (List<EventItems>) -> Unit) {
     withContext(Dispatchers.IO) {
-        val url = URL("https://ctftime.org/api/v1/events/?limit=100")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
 
