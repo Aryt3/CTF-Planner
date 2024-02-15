@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -432,9 +433,6 @@ fun Upcoming(sharedPref: SharedPreferences) {
     val db = AppDatabase.getDatabase(context)
     val eventDao = db.eventDao()
 
-    var backgroundColorAdd by remember { mutableStateOf(Color.LightGray) }
-    var backgroundColorRemove by remember { mutableStateOf(Color.LightGray) }
-
     // Fetch event data from API
     LaunchedEffect(Unit) {
         fetchEvents(url = URL("https://ctftime.org/api/v1/events/?limit=100")) { fetchedEvents ->
@@ -568,7 +566,6 @@ fun Upcoming(sharedPref: SharedPreferences) {
                     IconButton(
                         onClick = {
                             // Add event item
-                            backgroundColorAdd = Color.White
                             addEvent(event)
                         },
                         modifier = Modifier
@@ -576,7 +573,6 @@ fun Upcoming(sharedPref: SharedPreferences) {
                             .clip(CircleShape)
                             .border(1.dp, Color.Green)
                             .padding(1.dp)
-                            .background(backgroundColorAdd)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
@@ -587,7 +583,6 @@ fun Upcoming(sharedPref: SharedPreferences) {
                     IconButton(
                         onClick = {
                             // Remove event item
-                            backgroundColorRemove = Color.White
                             removeEvent(event.id)
                         },
                         modifier = Modifier
@@ -595,7 +590,6 @@ fun Upcoming(sharedPref: SharedPreferences) {
                             .clip(CircleShape)
                             .border(1.dp, Color.Red)
                             .padding(1.dp)
-                            .background(backgroundColorRemove)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Clear,
@@ -987,17 +981,15 @@ suspend fun fetchEvents(url: URL, onEventsFetched: (List<EventItems>) -> Unit) {
         if (responseCode == HttpURLConnection.HTTP_OK) {
             val reader = BufferedReader(InputStreamReader(connection.inputStream))
             val response = StringBuilder()
+
             var line: String?
             while (reader.readLine().also { line = it } != null) {
                 response.append(line)
             }
             reader.close()
 
-            // Parse the JSON response and extract event titles
             val events = parseEventsFromJson(response.toString())
             onEventsFetched(events)
-        } else {
-            // Handle error if request is not successful
         }
         connection.disconnect()
     }

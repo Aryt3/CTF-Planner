@@ -30,12 +30,6 @@ data class EventEntity(
     val eventId: String
 )
 
-@RequiresApi(Build.VERSION_CODES.O)
-@TypeConverter
-fun fromDate(date: LocalDate): Long {
-    return date.toEpochDay()
-}
-
 @Dao
 interface EventDao {
     @Query("SELECT * FROM events")
